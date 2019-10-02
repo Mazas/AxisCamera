@@ -1,93 +1,77 @@
-
+/* Client code */
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
-#include <string.h>
-#include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <netinet/in.h>
 
-#define PORT 1025 /*This is the port for the client server connection*/
-#define MAXDATASIZE 512 // max number of bytes we can get at once
+#define PORT_NUMBER     1025
+#define SERVER_ADDRESS  "127.0.0.1"
+#define FILENAME        "received_file"
 
-int main(int argc, char *argv[])
+int main(int argc, char **argv)
 {
-	int sockfd;
-	char buf[MAXDATASIZE];
-	struct sockaddr_in server; // connector.s address information
-	struct hostent *hostIP; //placeholder for the IP address
+        int client_socket;
+        ssize_t len;
+        struct sockaddr_in remote_addr;
+        char buffer[BUFSIZ];
+        int file_size;
+        FILE *received_file;
+        int remain_data = 0;
 
-	if (argc != 2)
-	{
-		fprintf(stderr,"usage: client hostname\n");
-		exit(1);
-	}
-	
-	if ((hostIP=gethostbyname(argv[1])) == NULL) 
-	{ // get the host info
-		perror("gethostbyname");
-		exit(1);
-	}
-	
-	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) 
-	{
-		perror("socket");
-		exit(1);
-	}
-	server.sin_family = AF_INET; // host byte order
-	server.sin_port = htons(PORT); // short, network byte order
-	server.sin_addr = *((struct in_addr *)hostIP->h_addr);
-	memset(&(server.sin_zero), 0, 8);
-	puts("socket created");
+        /* Zeroing remote_addr struct */
+        memset(&remote_addr, 0, sizeof(remote_addr));
 
-	if (connect(sockfd, (struct sockaddr *)&server, sizeof(struct sockaddr)) == -1)
-	{
-		perror("connect");
-		exit(1);
-	}
-	puts("connected");
+        /* Construct remote_addr struct */
+        remote_addr.sin_family = AF_INET;
+        inet_pton(AF_INET, SERVER_ADDRESS, &(remote_addr.sin_addr));
+        remote_addr.sin_port = htons(PORT_NUMBER);
 
-	//send shit
-	printf("Write something: ");
-	scanf("%s",buf);
-	if (send(sockfd, buf, MAXDATASIZE-1, 0) == -1)
-			perror("send");
-	if (strcmp(buf,"send\r\n"))
-	{
-		// get file size
-		puts("receiving file");
-		int size;
-		unsigned char bytes[512];
-		recv(sockfd,size,sizeof(int),0);
-		FILE *fp = fopen("received_file","wb");
-		while (size>0)
-		{
-			recv(sockfd, bytes, 512, 0);
-			printf("%d\t%s\n",size,bytes);
-			fwrite(bytes, 1,512,fp);
-			memset(bytes,0,sizeof(bytes));
-			size=size-512;
-		}
+        /* Create client socket */
+        client_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (client_socket == -1)
+        {
+                fprintf(stderr, "Error creating socket --> %s\n", strerror(errno));
 
-		
-	}
-	
+                exit(EXIT_FAILURE);
+        }
 
-	//clear buffer
-	memset(buf, 0, sizeof(buf));
-	// read shit back
-	if ((recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) 
-	{
-		perror("recv");
-		exit(1);
-	}
-	
-	//printf("\n\nLocalhost: %s\n", inet_ntoa(*(struct in_addr *)hostIP->h_addr));
-	printf("Local Port: %d\n", PORT);
-	//printf("Remote Host: %s\n", inet_ntoa(their_addr.sin_addr));
-	printf("Received data: %s\n",buf);
-	close(sockfd);
-	return 0;
+        /* Connect to the server */
+        if (connect(client_socket, (struct sockaddr *)&remote_addr, sizeof(struct sockaddr)) == -1)
+        {
+                fprintf(stderr, "Error on connect --> %s\n", strerror(errno));
+
+                exit(EXIT_FAILURE);
+        }
+
+        /* Receiving file size */
+        recv(client_socket, buffer, BUFSIZ, 0);
+        file_size = atoi(buffer);
+        //fprintf(stdout, "\nFile size : %d\n", file_size);
+
+        received_file = fopen(FILENAME, "wb");
+        if (received_file == NULL)
+        {
+                fprintf(stderr, "Failed to open file --> %s\n", strerror(errno));
+
+                exit(EXIT_FAILURE);
+        }
+
+        remain_data = file_size;
+
+        while ((remain_data > 0) && ((len = recv(client_socket, buffer, BUFSIZ, 0)) > 0))
+        {
+                fwrite(buffer, sizeof(char), len, received_file);
+                remain_data -= len;
+                fprintf(stdout, "Receive %ld bytes and we hope :- %d bytes\n", len, remain_data);
+        }
+        fclose(received_file);
+
+        close(client_socket);
+
+        return 0;
 }
-
