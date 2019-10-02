@@ -1,134 +1,123 @@
+/* Server code */
+
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
-#include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
 #include <arpa/inet.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/sendfile.h>
 
-#include <sys/wait.h>
-#include <signal.h>
-#define MYPORT 1025 // the port users will be connecting to
-#define BACKLOG 10 // how many pending connections queue will hold
-#define MAXDATASIZE 512 // max number of bytes we can get at once
+#define PORT_NUMBER     1025
+#define SERVER_ADDRESS  "127.0.0.1"
+#define FILE_TO_SEND    "image"
 
-void sigchld_handler(int s)
+int main(int argc, char **argv)
 {
-	while(wait(NULL) > 0);
+        int server_socket;
+        int peer_socket;
+        socklen_t       sock_len;
+        ssize_t len;
+        struct sockaddr_in      server_addr;
+        struct sockaddr_in      peer_addr;
+        int fd;
+        int sent_bytes = 0;
+        char file_size[256];
+        struct stat file_stat;
+        long int offset;
+        int remain_data;
+
+        /* Create server socket */
+        server_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (server_socket == -1)
+        {
+                fprintf(stderr, "Error creating socket --> %s", strerror(errno));
+
+                exit(EXIT_FAILURE);
+        }
+
+        /* Zeroing server_addr struct */
+        memset(&server_addr, 0, sizeof(server_addr));
+        /* Construct server_addr struct */
+        server_addr.sin_family = AF_INET;
+        inet_pton(AF_INET, SERVER_ADDRESS, &(server_addr.sin_addr));
+        server_addr.sin_port = htons(PORT_NUMBER);
+
+        /* Bind */
+        if ((bind(server_socket, (struct sockaddr *)&server_addr, sizeof(struct sockaddr))) == -1)
+        {
+                fprintf(stderr, "Error on bind --> %s", strerror(errno));
+
+                exit(EXIT_FAILURE);
+        }
+
+        /* Listening to incoming connections */
+        if ((listen(server_socket, 5)) == -1)
+        {
+                fprintf(stderr, "Error on listen --> %s", strerror(errno));
+
+                exit(EXIT_FAILURE);
+        }
+
+        fd = open(FILE_TO_SEND, O_RDONLY);
+        if (fd == -1)
+        {
+                fprintf(stderr, "Error opening file --> %s", strerror(errno));
+
+                exit(EXIT_FAILURE);
+        }
+
+        /* Get file stats */
+        if (fstat(fd, &file_stat) < 0)
+        {
+                fprintf(stderr, "Error fstat --> %s", strerror(errno));
+
+                exit(EXIT_FAILURE);
+        }
+
+        fprintf(stdout, "File Size: \n%ld bytes\n", file_stat.st_size);
+
+        sock_len = sizeof(struct sockaddr_in);
+        /* Accepting incoming peers */
+        peer_socket = accept(server_socket, (struct sockaddr *)&peer_addr, &sock_len);
+        if (peer_socket == -1)
+        {
+                fprintf(stderr, "Error on accept --> %s", strerror(errno));
+
+                exit(EXIT_FAILURE);
+        }
+        fprintf(stdout, "Accept peer --> %s\n", inet_ntoa(peer_addr.sin_addr));
+
+        sprintf(file_size, "%ld", file_stat.st_size);
+
+        /* Sending file size */
+        len = send(peer_socket, file_size, sizeof(file_size), 0);
+        if (len < 0)
+        {
+              fprintf(stderr, "Error on sending greetings --> %s", strerror(errno));
+
+              exit(EXIT_FAILURE);
+        }
+
+        fprintf(stdout, "Server sent %ld bytes for the size\n", len);
+
+        remain_data = file_stat.st_size;
+        /* Sending file data */
+		offset = 0;
+        while (((sent_bytes = sendfile(peer_socket, fd, &offset, BUFSIZ)) > 0) && (remain_data > 0))
+        {
+                fprintf(stdout, "1. Server sent %d bytes from file's data, offset is now : %ld and remaining data = %d\n", sent_bytes, offset, remain_data);
+                remain_data -= sent_bytes;
+                fprintf(stdout, "2. Server sent %d bytes from file's data, offset is now : %ld and remaining data = %d\n", sent_bytes, offset, remain_data);
+        }
+
+        close(peer_socket);
+        close(server_socket);
+
+        return 0;
 }
-int main(void)
-{
-	int numbytes;
-	char buf[MAXDATASIZE];
-	int sockfd, new_fd; // listen on sock_fd, new connection on new_fd
-	struct sockaddr_in my_addr; // my address information
-	struct sockaddr_in their_addr; // connector.s address information
-	int sin_size;
-	struct sigaction sa;
-	int yes=1;
-
-
-	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
-	{
-	perror("socket");
-	exit(1);
-	}
-	if (setsockopt(sockfd,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(int)) == -1)
-	{
-		perror("setsockopt");
-		exit(1);
-	}
-	my_addr.sin_family = AF_INET; // host byte order
-	my_addr.sin_port = htons(MYPORT); // short, network byte order
-	my_addr.sin_addr.s_addr = INADDR_ANY; // automatically fill with my IP
-	memset(&(my_addr.sin_zero), 0, 8); // zero the rest of the struct
-
-
-	if (bind(sockfd, (struct sockaddr *)&my_addr, sizeof(struct sockaddr)) == -1)
-	{
-		perror("bind");
-		exit(1);
-	}
-	if (listen(sockfd, BACKLOG) == -1)
-	{
-		perror("listen");
-		exit(1);
-	}
-	sa.sa_handler = sigchld_handler; // reap all dead processes
-	sigemptyset(&sa.sa_mask);
-	sa.sa_flags = SA_RESTART;
-	if (sigaction(SIGCHLD, &sa, NULL) == -1) 
-	{
-		perror("sigaction");
-		exit(1);
-	}
-	while(1)  // main accept() loop
-	{
-		sin_size = sizeof(struct sockaddr_in);
-		if ((new_fd = accept(sockfd, (struct sockaddr *)&their_addr,&sin_size)) == -1)
-		{
-			//perror("accept");
-			continue;
-		}
-		printf("Received request from Client: %s:%d\n",
-		inet_ntoa(their_addr.sin_addr),MYPORT);
-		if (!fork()) 
-		{ // this is the child process
-			close(sockfd); // child doesn.t need the listener
-
-			//lear buffer just in case
-			memset(buf,0,sizeof(buf));
-			//read shit
-			if ((numbytes=recv(new_fd, buf, MAXDATASIZE-1, 0)) == -1) 
-			{
-				perror("recv");
-				exit(1);
-			}
-			printf("Received: %s\n",buf);
-
-			//stream the file
-			if (strcmp(buf,"send\r\n"))
-			{
-				FILE *fp;
-				unsigned char bytes[512];
-
-				fp = fopen("image", "rb");
-
-				//get file size
-				fseek(fp, 0, SEEK_END); // seek to end of file
-				int size = ftell(fp);
-				// send file size
-				send(new_fd,size,sizeof(int),0);
-
-				while (!feof(fp))
-				{
-					fread(bytes, 1,512,fp);
-					send(new_fd, bytes, 512,0);
-				}
-				fclose(fp);
-
-			}
-
-			// sent shit
-			if (send(new_fd, buf, MAXDATASIZE-1, 0) == -1)
-			perror("send");
-			close(new_fd);
-			exit(0);
-		}
-	close(new_fd); // parent doesn.t need this
-	}
-	return 0;
-}
-
-
-
-
-
-
-
-
-
-
-
