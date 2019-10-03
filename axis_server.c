@@ -13,6 +13,9 @@
 #include <fcntl.h>
 #include <sys/sendfile.h>
 
+//Axis library
+#include <capture.h>
+
 #define PORT_NUMBER 1025
 #define SERVER_ADDRESS "127.0.0.1"
 #define FILE_TO_SEND "image"
@@ -64,6 +67,59 @@ void send_file_to_client(int peer_socket)
 		fprintf(stdout, "2. Server sent %d bytes from file's data, offset is now : %ld and remaining data = %d\n", sent_bytes, offset, remain_data);
 	}
 }
+
+static void write_pgm(void* data, int width, int height, int stride)
+{
+	FILE *fp;
+	int row, column;
+	fp = fopen("test.pgn", "w");
+
+	fprintf(fp,"P5\n");
+	fprintf(fp,"#CREATOR: me\n");
+	fprintf(fp,"%d %d\n",width, height);
+	fprintf(fp,"%d\n",255);
+
+	for (row = 0; row < height; row++)
+	{
+		for (column = 0; column < width; column++)
+		{
+			fputc(((unsigned char *)data)[row * stride + column],fp);
+		}
+	}
+	fclose(fp);
+	
+}
+
+void take_image(int fps, char resolution[])
+{
+	media_frame *frame;
+	void *data;
+	size_t size;
+	media_stream *stream;
+	capture_time timestamp;
+
+	char request_string[256];
+	snprintf(request_string,sizeof request_string, "fps=%d&sdk_format=Y800&resolution=%s&rotation=180",fps,resolution);
+
+
+
+	stream = capture_open_stream(IMAGE_UNCOMPRESSED, request_string);
+	frame = capture_get_frame(stream);
+
+	data = capture_frame_data(frame);
+	int width = capture_frame_width(frame);
+	int height = capture_frame_height(frame);
+	int stride = capture_frame_stride(frame);
+	timestamp = capture_frame_timestamp(frame);
+
+	printf("Frame captured at %"CAPTURE_TIME_FORMAT"\n",timestamp);
+	write_pgm(data, width, height, stride);
+
+	capture_frame_free(frame);
+	capture_close_stream(stream);
+
+}
+
 
 int main(int argc, char **argv)
 {
@@ -121,7 +177,9 @@ int main(int argc, char **argv)
 	printf("Received: %s",command);
 	if (!strcmp(command,"send"))
 	{
-			send_file_to_client(peer_socket);
+		take_image(25,"350x288");
+
+		send_file_to_client(peer_socket);
 
 	}else
 	{
