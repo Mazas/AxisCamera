@@ -10,8 +10,8 @@
 #include <netinet/in.h>
 
 #define PORT_NUMBER 1025
-#define SERVER_ADDRESS "127.0.0.1"
-#define FILENAME "received_file"
+#define SERVER_ADDRESS "192.168.20.252"
+#define FILENAME "received_file.jpeg"
 
 void receive_file_from_server(int client_socket)
 {
@@ -23,7 +23,7 @@ void receive_file_from_server(int client_socket)
 	/* Receiving file size */
 	recv(client_socket, buffer, BUFSIZ, 0);
 	file_size = atoi(buffer);
-	//fprintf(stdout, "\nFile size : %d\n", file_size);
+	fprintf(stdout, "\nFile size : %d\n", file_size);
 
 	received_file = fopen(FILENAME, "wb");
 	if (received_file == NULL)
@@ -79,14 +79,16 @@ int main(int argc, char **argv)
 	scanf("%s",command);
 
 	send(client_socket, command,255,0);
-	printf("Received: %s\n",command);
 	if (!strcmp(command,"send"))
 	{
-			receive_file_from_server(client_socket);
+		receive_file_from_server(client_socket);
+
+		//recv(client_socket,command,255,0);
 
 	}else
 	{
 		recv(client_socket,command,255,0);
+		printf("Received: %s\n",command);
 	}
 
 	close(client_socket);

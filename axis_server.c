@@ -12,108 +12,40 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/sendfile.h>
+#include <syslog.h>
 
 //Axis library
 #include <capture.h>
 
 #define PORT_NUMBER 1025
-#define SERVER_ADDRESS "127.0.0.1"
-#define FILE_TO_SEND "image"
+#define SERVER_ADDRESS "192.168.20.252"
 
-void send_file_to_client(int peer_socket)
-{
-	int sent_bytes = 0;
-	ssize_t len;
-	int fd;
-	char file_size[256];
-	struct stat file_stat;
-	long int offset;
-	int remain_data;
-
-	fd = open(FILE_TO_SEND, O_RDONLY);
-	if (fd == -1)
-	{
-		fprintf(stderr, "Error opening file --> %s", strerror(errno));
-
-		exit(EXIT_FAILURE);
-	}
-
-	/* Get file stats */
-	if (fstat(fd, &file_stat) < 0)
-	{
-		fprintf(stderr, "Error fstat --> %s", strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-	sprintf(file_size, "%ld", file_stat.st_size);
-	fprintf(stdout, "File Size: \n%ld bytes\n", file_stat.st_size);
-
-	/* Sending file size */
-	len = send(peer_socket, file_size, sizeof(file_size), 0);
-	if (len < 0)
-	{
-		fprintf(stderr, "Error on sending greetings --> %s", strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	fprintf(stdout, "Server sent %ld bytes for the size\n", len);
-
-	remain_data = file_stat.st_size;
-	/* Sending file data */
-	offset = 0;
-	while (((sent_bytes = sendfile(peer_socket, fd, &offset, BUFSIZ)) > 0) && (remain_data > 0))
-	{
-		fprintf(stdout, "1. Server sent %d bytes from file's data, offset is now : %ld and remaining data = %d\n", sent_bytes, offset, remain_data);
-		remain_data -= sent_bytes;
-		fprintf(stdout, "2. Server sent %d bytes from file's data, offset is now : %ld and remaining data = %d\n", sent_bytes, offset, remain_data);
-	}
-}
-
-static void write_pgm(void* data, int width, int height, int stride)
-{
-	FILE *fp;
-	int row, column;
-	fp = fopen("test.pgn", "w");
-
-	fprintf(fp,"P5\n");
-	fprintf(fp,"#CREATOR: me\n");
-	fprintf(fp,"%d %d\n",width, height);
-	fprintf(fp,"%d\n",255);
-
-	for (row = 0; row < height; row++)
-	{
-		for (column = 0; column < width; column++)
-		{
-			fputc(((unsigned char *)data)[row * stride + column],fp);
-		}
-	}
-	fclose(fp);
-	
-}
-
-void take_image(int fps, char resolution[])
+void take_image(int peer_socket)
 {
 	media_frame *frame;
-	void *data;
-	size_t size;
 	media_stream *stream;
+	void *data;
 	capture_time timestamp;
+	unsigned int totalbytes = 0;
+	char sizeString[256];
+	
 
-	char request_string[256];
-	snprintf(request_string,sizeof request_string, "fps=%d&sdk_format=Y800&resolution=%s&rotation=180",fps,resolution);
-
-
-
-	stream = capture_open_stream(IMAGE_UNCOMPRESSED, request_string);
+	stream = capture_open_stream(IMAGE_JPEG, "resolution=352x288&fps=10");
 	frame = capture_get_frame(stream);
 
+	syslog(LOG_INFO,"Frame captured");
+	
+	totalbytes += capture_frame_size(frame);
 	data = capture_frame_data(frame);
-	int width = capture_frame_width(frame);
-	int height = capture_frame_height(frame);
-	int stride = capture_frame_stride(frame);
-	timestamp = capture_frame_timestamp(frame);
 
-	printf("Frame captured at %"CAPTURE_TIME_FORMAT"\n",timestamp);
-	write_pgm(data, width, height, stride);
+	sprintf(sizeString,"%d",totalbytes);
+	syslog(LOG_INFO,"Total bytes: %s",sizeString);
+	
+	char dataBuffer[totalbytes];
+	sprintf(dataBuffer,"%d",data);
+
+	send(peer_socket, sizeString , sizeof(sizeString),0);
+	send(peer_socket, data, sizeof data,0);
 
 	capture_frame_free(frame);
 	capture_close_stream(stream);
@@ -172,22 +104,25 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 	fprintf(stdout, "Accept peer --> %s\n", inet_ntoa(peer_addr.sin_addr));
-
+	
+	memset(&command, 0, sizeof command);
 	recv(peer_socket, command,255,0);
 	printf("Received: %s",command);
 	if (!strcmp(command,"send"))
 	{
-		take_image(25,"350x288");
-
-		send_file_to_client(peer_socket);
+		openlog("Logs", LOG_PID, LOG_USER);
+		syslog(LOG_INFO,"Send compare succesfull");
+		take_image(peer_socket);
+		syslog(LOG_INFO,"Image taken");
 
 	}else
 	{
+		syslog(LOG_INFO,"Send compare unsuccesfull");
 		send(peer_socket,command,255,0);
 	}
 	
 	
-
+	closelog();
 
 	close(peer_socket);
 	close(server_socket);
