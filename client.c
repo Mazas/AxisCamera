@@ -10,7 +10,7 @@
 #include <netinet/in.h>
 
 #define PORT_NUMBER 1025
-#define SERVER_ADDRESS "192.168.20.252"
+#define SERVER_ADDRESS "192.168.20.249"
 #define FILENAME "received_file.jpeg"
 
 void receive_file_from_server(int client_socket)
@@ -18,10 +18,10 @@ void receive_file_from_server(int client_socket)
 	int file_size;
 	FILE *received_file;
 	int remain_data = 0;
-	char buffer[BUFSIZ];
+	char buffer[65000];
 	ssize_t len;
 	/* Receiving file size */
-	recv(client_socket, buffer, BUFSIZ, 0);
+	recv(client_socket, buffer, 1024, 0);
 	file_size = atoi(buffer);
 	fprintf(stdout, "\nFile size : %d\n", file_size);
 
@@ -35,7 +35,7 @@ void receive_file_from_server(int client_socket)
 
 	remain_data = file_size;
 
-	while ((remain_data > 0) && ((len = recv(client_socket, buffer, BUFSIZ, 0)) > 0))
+	while ((remain_data > 0) && ((len = recv(client_socket, buffer, 65000, 0)) > 0))
 	{
 		fwrite(buffer, sizeof(char), len, received_file);
 		remain_data -= len;
@@ -77,20 +77,21 @@ int main(int argc, char **argv)
 	}
 	printf("Connected.\nWrite a command: ");
 	scanf("%s",command);
-
-	send(client_socket, command,255,0);
-	if (!strcmp(command,"send"))
+	while (strcmp(command,"close"))
 	{
-		receive_file_from_server(client_socket);
-
-		//recv(client_socket,command,255,0);
-
-	}else
-	{
-		recv(client_socket,command,255,0);
-		printf("Received: %s\n",command);
+		send(client_socket, command,255,0);
+		if (!strcmp(command,"send"))
+		{
+			receive_file_from_server(client_socket);
+		}else
+		{
+			recv(client_socket,command,255,0);
+			printf("Received: %s\n",command);
+		}
+		memset(&command, 0, sizeof command);
+		printf("Write a command: ");
+		scanf("%s",command);
 	}
-
 	close(client_socket);
 
 	return 0;
