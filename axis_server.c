@@ -13,14 +13,24 @@
 #include <fcntl.h>
 #include <sys/sendfile.h>
 #include <syslog.h>
+#include <pthread.h>
 
 //Axis library
 #include <capture.h>
 
 #define PORT_NUMBER 1025
 #define SERVER_ADDRESS "192.168.20.252"
+#define MAX_THREADS 5
 
-void take_image(int peer_socket, struct sockaddr_in clientaddr, int clientlen, char **resolution)
+struct arg_struct {
+    int server_socket;
+    int client_socket_lenght;
+	char buffer[BUFSIZ];
+	struct sockaddr_in client_socket;
+};
+
+int thread_no = 0;
+void *take_image(struct arg_struct arguments)
 {
 	media_frame *frame;
 	media_stream *stream;
@@ -28,7 +38,7 @@ void take_image(int peer_socket, struct sockaddr_in clientaddr, int clientlen, c
 	unsigned long long totalbytes = 0;
 	char sizeString[256];
 	//char resolution = "resolution=352x288&fps=10";
-	stream = capture_open_stream(IMAGE_JPEG, resolution);
+	stream = capture_open_stream(IMAGE_JPEG, arguments.buffer);
 	int sent_bytes;
 
 	frame = capture_get_frame(stream);
@@ -44,7 +54,7 @@ void take_image(int peer_socket, struct sockaddr_in clientaddr, int clientlen, c
 
 	// sending data
 
-	sent_bytes = sendto(peer_socket, dataBuffer, totalbytes, 0, (struct sockaddr *)&clientaddr, clientlen);
+	sent_bytes = sendto(&arguments.server_socket, dataBuffer, totalbytes, 0, (struct sockaddr *)&arguments.client_socket, arguments.client_socket_lenght);
 	if (sent_bytes < 0)
 	{
 		syslog(LOG_INFO, "ERROR in send_image");
@@ -65,6 +75,8 @@ int main(int argc, char **argv)
 	char *hostaddrp;			   /* dotted decimal host addr string */
 	int optval;					   /* flag value for setsockopt */
 	int n;						   /* message byte size */
+	struct arg_struct args = (struct arg_struct)args;
+
 	/* 
    * socket: create the parent socket 
    */
@@ -89,6 +101,12 @@ int main(int argc, char **argv)
 	serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	serveraddr.sin_port = htons((unsigned short)PORT_NUMBER);
 
+	/*
+	* Thread variables
+	*/
+	pthread_t threads[MAX_THREADS];
+	int rc = 0;
+
 	/* 
    * bind: associate the parent socket with a port 
    */
@@ -96,16 +114,13 @@ int main(int argc, char **argv)
 	{
 		syslog(LOG_INFO, "ERROR on binding");
 	}
-	/* 
-   * main loop: wait for a datagram, then echo it
-   */
 	clientlen = sizeof(clientaddr);
 	while (1)
 	{
 
 		/*
      * recvfrom: receive a UDP datagram from a client
-     */
+     */		
 		memset(&buf, 0, sizeof buf);
 		n = recvfrom(sockfd, buf, BUFSIZ, 0, (struct sockaddr *)&clientaddr, &clientlen);
 		if (n < 0)
@@ -120,7 +135,13 @@ int main(int argc, char **argv)
 		if (strstr(buf, "resolution="))
 		{
 			syslog(LOG_INFO, "%s", buf);
-			take_image(sockfd, clientaddr, clientlen, buf);
+    		args.server_socket = sockfd;
+    		args.client_socket_lenght = clientlen;
+			memcpy(args.buffer,buf,sizeof buf);
+			args.client_socket = clientaddr;
+  			rc = pthread_create(&threads[thread_no], NULL, take_image, (void *) &args);
+
+			// take_image(sockfd, clientaddr, clientlen, buf);
 		}
 	}
 	return 0;
