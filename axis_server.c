@@ -140,6 +140,13 @@ int main(int argc, char **argv)
 			memcpy(args.buffer,buf,sizeof buf);
 			args.client_socket = clientaddr;
   			rc = pthread_create(&threads[thread_no], NULL, take_image, (void *) &args);
+			if(rc){
+				syslog(LOG_ALERT, "Thread could not be started\n");
+			}
+			else{
+				thread_no++;
+			}
+			  
 
 			// take_image(sockfd, clientaddr, clientlen, buf);
 		}
