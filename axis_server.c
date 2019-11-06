@@ -1,155 +1,183 @@
 /* Server code */
 
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <string.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <netinet/in.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/sendfile.h>
+#include<stdio.h>
+#include<string.h>
+#include<stdlib.h>
+#include<sys/socket.h>
+#include<arpa/inet.h>
+#include<unistd.h>
+#include<pthread.h>
 #include <syslog.h>
-#include <pthread.h>
-
 //Axis library
-#include <capture.h>
+//#include <capture.h>
 
 #define PORT_NUMBER 1025
-#define SERVER_ADDRESS "192.168.20.252"
+#define SERVER_ADDRESS "127.0.0.1"
 #define MAX_THREADS 5
 
-struct arg_struct {
-    int server_socket;
-    int client_socket_lenght;
-	char buffer[BUFSIZ];
-	struct sockaddr_in client_socket;
-};
+void *connection_handler(void *);
 
-int thread_no = 0;
-void *take_image(struct arg_struct arguments)
-{
-	media_frame *frame;
-	media_stream *stream;
-	void *data;
+void *send_image(int sock){
+	FILE *fs;
+	fs = fopen("image.jpeg","rb");
+   	if(fs == NULL)
+   	{
+    	printf("Error!");   
+    	exit(1);             
+   	}
 	unsigned long long totalbytes = 0;
-	char sizeString[256];
-	//char resolution = "resolution=352x288&fps=10";
-	stream = capture_open_stream(IMAGE_JPEG, arguments.buffer);
-	int sent_bytes;
-
-	frame = capture_get_frame(stream);
-
-	totalbytes = capture_frame_size(frame);
-	data = capture_frame_data(frame);
-
-	sprintf(sizeString, "%llu\n", totalbytes);
-	syslog(LOG_INFO, "Total bytes: %s", sizeString);
-
+	printf("File opened.\n");
+    
+    fseek(fs, 0L, SEEK_END);
+    totalbytes = ftell(fs);
+    rewind(fs);
+	
 	char dataBuffer[totalbytes];
-	memcpy(dataBuffer, data, totalbytes);
+    memset(dataBuffer,0,sizeof dataBuffer);
+	fread(dataBuffer,1,totalbytes,fs);
+	printf("File copied to buffer.\n");
+    puts(dataBuffer);
+
+	char size [128];
+	sprintf(size, "%llu\n",totalbytes);
+    printf("Sending file size %s",size );
+    char buff[128];
+    memset(buff,0,128);
+	send(sock , size , strlen(size), 0);
+    read(sock,buff, 128);
+    puts(buff);
 
 	// sending data
+	printf("Started sending\n");
+	send(sock, dataBuffer, totalbytes, 0);
+    memset(buff,0,128);
+    read(sock,buff,128);
 
-	sent_bytes = sendto(&arguments.server_socket, dataBuffer, totalbytes, 0, (struct sockaddr *)&arguments.client_socket, arguments.client_socket_lenght);
-	if (sent_bytes < 0)
-	{
-		syslog(LOG_INFO, "ERROR in send_image");
-	}
-	capture_frame_free(frame);
-	memset(&sizeString, 0, 256);
-	memset(&dataBuffer, 0, totalbytes);
-	capture_close_stream(stream);
+	printf("File sent.\n");
+   	fclose(fs);
 }
+// void *take_image(struct arg_struct arguments)
+// {
+// 	media_frame *frame;
+// 	media_stream *stream;
+// 	void *data;
+// 	unsigned long long totalbytes = 0;
+// 	char sizeString[256];
+// 	//char resolution = "resolution=352x288&fps=10";
+// 	stream = capture_open_stream(IMAGE_JPEG, arguments.buffer);
+// 	int sent_bytes;
+
+// 	frame = capture_get_frame(stream);
+
+// 	totalbytes = capture_frame_size(frame);
+// 	data = capture_frame_data(frame);
+
+// 	sprintf(sizeString, "%llu\n", totalbytes);
+// 	syslog(LOG_INFO, "Total bytes: %s", sizeString);
+
+// 	char dataBuffer[totalbytes];
+// 	memcpy(dataBuffer, data, totalbytes);
+
+// 	// sending data
+
+// 	sent_bytes = sendto(&arguments.server_socket, dataBuffer, totalbytes, 0, (struct sockaddr_in *)&arguments.client_socket, arguments.client_socket_lenght);
+// 	if (sent_bytes < 0)
+// 	{
+// 		syslog(LOG_INFO, "ERROR in send_image");
+// 	}
+// 	capture_frame_free(frame);
+// 	memset(&sizeString, 0, 256);
+// 	memset(&dataBuffer, 0, totalbytes);
+// 	capture_close_stream(stream);
+// }
 
 int main(int argc, char **argv)
 {
-	int sockfd;					   /* socket */
-	int clientlen;				   /* byte size of client's address */
-	struct sockaddr_in serveraddr; /* server's addr */
-	struct sockaddr_in clientaddr; /* client addr */
-	char buf[BUFSIZ];			   /* message buf */
-	char *hostaddrp;			   /* dotted decimal host addr string */
-	int optval;					   /* flag value for setsockopt */
-	int n;						   /* message byte size */
-	struct arg_struct args = (struct arg_struct)args;
+  int socket_desc , client_sock , c;
+    struct sockaddr_in server , client;
+     
+    //Create socket
+    socket_desc = socket(AF_INET , SOCK_STREAM , 0);
+    if (socket_desc == -1)
+    {
+        printf("Could not create socket");
+    }
+    puts("Socket created");
+     
+    //Prepare the sockaddr_in structure
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons( PORT_NUMBER );
+     
+    //Bind
+    if( bind(socket_desc,(struct sockaddr *)&server , sizeof(server)) < 0)
+    {
+        //print the error message
+        perror("bind failed. Error");
+        return 1;
+    }
+    puts("bind done");
+     
+    //Listen
+    listen(socket_desc , 3);
+     
+    //Accept and incoming connection
+    puts("Waiting for incoming connections...");
+    c = sizeof(struct sockaddr_in);
+	pthread_t thread_id;
+	
+    while( (client_sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&c)) )
+    {
+        puts("Connection accepted");
+         
+        if( pthread_create( &thread_id , NULL ,  connection_handler , (void*) &client_sock) < 0)
+        {
+            perror("could not create thread");
+            return 1;
+        }
+         
+        //Now join the thread , so that we dont terminate before the thread
+        //pthread_join( thread_id , NULL);
+        puts("Handler assigned");
+    }
+     
+    if (client_sock < 0)
+    {
+        perror("accept failed");
+        return 1;
+    }
+        close(client_sock);
+     
+    return 0;
+}
 
-	/* 
-   * socket: create the parent socket 
-   */
-	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sockfd < 0)
-	{
-		syslog(LOG_INFO, "ERROR opening socket");
-	}
-	/* setsockopt: Handy debugging trick that lets 
-   * us rerun the server immediately after we kill it; 
-   * otherwise we have to wait about 20 secs. 
-   * Eliminates "ERROR on binding: Address already in use" error. 
-   */
-	optval = 1;
-	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval, sizeof(int));
-
-	/*
-   * build the server's Internet address
-   */
-	bzero((char *)&serveraddr, sizeof(serveraddr));
-	serveraddr.sin_family = AF_INET;
-	serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	serveraddr.sin_port = htons((unsigned short)PORT_NUMBER);
-
-	/*
-	* Thread variables
-	*/
-	pthread_t threads[MAX_THREADS];
-	int rc = 0;
-
-	/* 
-   * bind: associate the parent socket with a port 
-   */
-	if (bind(sockfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0)
-	{
-		syslog(LOG_INFO, "ERROR on binding");
-	}
-	clientlen = sizeof(clientaddr);
-	while (1)
-	{
-
-		/*
-     * recvfrom: receive a UDP datagram from a client
-     */		
-		memset(&buf, 0, sizeof buf);
-		n = recvfrom(sockfd, buf, BUFSIZ, 0, (struct sockaddr *)&clientaddr, &clientlen);
-		if (n < 0)
+void *connection_handler(void *socket_desc)
+{
+    //Get the socket descriptor
+    int sock = *(int*)socket_desc;
+    int read_size;
+    char *message , client_message[2000];
+     
+    //Receive a message from client
+    while( (read_size = recv(sock , client_message , 2000 , 0)) > 0 )
+    {
+		if (strstr(client_message, "resolution="))
 		{
-			syslog(LOG_INFO, "ERROR in recvfrom");
+			puts(client_message);
+			send_image(sock);
 		}
-		hostaddrp = inet_ntoa(clientaddr.sin_addr);
-		if (hostaddrp == NULL)
-		{
-			syslog(LOG_INFO, "ERROR on inet_ntoa\n");
-		}
-		if (strstr(buf, "resolution="))
-		{
-			syslog(LOG_INFO, "%s", buf);
-    		args.server_socket = sockfd;
-    		args.client_socket_lenght = clientlen;
-			memcpy(args.buffer,buf,sizeof buf);
-			args.client_socket = clientaddr;
-  			rc = pthread_create(&threads[thread_no], NULL, take_image, (void *) &args);
-			if(rc){
-				syslog(LOG_ALERT, "Thread could not be started\n");
-			}
-			else{
-				thread_no++;
-			}
-			  
-
-			// take_image(sockfd, clientaddr, clientlen, buf);
-		}
-	}
+		//clear the message buffer
+		memset(client_message, 0, 2000);
+    }
+     
+    if(read_size == 0)
+    {
+        puts("Client disconnected");
+        fflush(stdout);
+    }
+    else if(read_size == -1)
+    {
+        perror("recv failed");
+    }
 	return 0;
 }
