@@ -15,7 +15,7 @@ OBJS	= axis_server.o
 all: $(PROGS)
 
 $(PROGS): $(OBJS)
-	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
+	$(CC) $(LDFLAGS) $^ $(CFLAGS) $(LDLIBS) -o $@
 	
 clean: 
 	rm -f $(PROGS) *.o core
