@@ -12,7 +12,7 @@
 //#include <capture.h>
 
 #define PORT_NUMBER 1025
-#define SERVER_ADDRESS "127.0.0.1"
+#define SERVER_ADDRESS "192.168.20.252"
 #define MAX_THREADS 5
 
 void *connection_handler(void *);
@@ -56,40 +56,48 @@ void *send_image(int sock){
 	printf("File sent.\n");
    	fclose(fs);
 }
-// void *take_image(struct arg_struct arguments)
-// {
-// 	media_frame *frame;
-// 	media_stream *stream;
-// 	void *data;
-// 	unsigned long long totalbytes = 0;
-// 	char sizeString[256];
-// 	//char resolution = "resolution=352x288&fps=10";
-// 	stream = capture_open_stream(IMAGE_JPEG, arguments.buffer);
-// 	int sent_bytes;
+void *take_image(int sock, char request[])
+{
+	media_frame *frame;
+	media_stream *stream;
+	void *data;
+	unsigned long long totalbytes = 0;
+	char sizeString[256];
+	//char resolution = "resolution=352x288&fps=10";
+	stream = capture_open_stream(IMAGE_JPEG, request);
+	int sent_bytes;
 
-// 	frame = capture_get_frame(stream);
+	frame = capture_get_frame(stream);
 
-// 	totalbytes = capture_frame_size(frame);
-// 	data = capture_frame_data(frame);
+	totalbytes = capture_frame_size(frame);
+	data = capture_frame_data(frame);
 
-// 	sprintf(sizeString, "%llu\n", totalbytes);
-// 	syslog(LOG_INFO, "Total bytes: %s", sizeString);
+	sprintf(sizeString, "%llu\n", totalbytes);
+	syslog(LOG_INFO, "Total bytes: %s", sizeString);
 
-// 	char dataBuffer[totalbytes];
-// 	memcpy(dataBuffer, data, totalbytes);
+	char dataBuffer[totalbytes];
+	memcpy(dataBuffer, data, totalbytes);
 
-// 	// sending data
+    printf("Sending file size %s",sizeString );
+    char buff[128];
+    memset(buff,0,128);
+	send(sock , sizeString , strlen(sizeString), 0);
+    read(sock,buff, 128);
+    puts(buff);
 
-// 	sent_bytes = sendto(&arguments.server_socket, dataBuffer, totalbytes, 0, (struct sockaddr_in *)&arguments.client_socket, arguments.client_socket_lenght);
-// 	if (sent_bytes < 0)
-// 	{
-// 		syslog(LOG_INFO, "ERROR in send_image");
-// 	}
-// 	capture_frame_free(frame);
-// 	memset(&sizeString, 0, 256);
-// 	memset(&dataBuffer, 0, totalbytes);
-// 	capture_close_stream(stream);
-// }
+	// sending data
+	syslog(LOG_INFO,"Started sending\n");
+	send(sock, dataBuffer, totalbytes, 0);
+    memset(buff,0,128);
+    read(sock,buff,128);
+
+	syslog(LOG_INFO,"File sent.\n");
+
+	capture_frame_free(frame);
+	memset(&sizeString, 0, 256);
+	memset(&dataBuffer, 0, totalbytes);
+	capture_close_stream(stream);
+}
 
 int main(int argc, char **argv)
 {
@@ -164,7 +172,7 @@ void *connection_handler(void *socket_desc)
 		if (strstr(client_message, "resolution="))
 		{
 			puts(client_message);
-			send_image(sock);
+			take_image(sock, client_message);
 		}
 		//clear the message buffer
 		memset(client_message, 0, 2000);
