@@ -5,7 +5,6 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.*;;
-import java.util.Arrays;
 import java.util.Scanner;
 
 public class Client {
@@ -48,7 +47,8 @@ public class Client {
                 outToServer.flush();
 
                 byte[] data = new byte[size];
-                socket.getInputStream().read(data);
+                socket.getInputStream().readNBytes(data,0,size);
+
                 outToServer.write("file received");
                 outToServer.flush();
 
