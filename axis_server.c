@@ -9,7 +9,7 @@
 #include<pthread.h>
 #include <syslog.h>
 //Axis library
-//#include <capture.h>
+#include <capture.h>
 
 #define PORT_NUMBER 1025
 #define SERVER_ADDRESS "192.168.20.252"
@@ -72,25 +72,26 @@ void *take_image(int sock, char request[])
 	totalbytes = capture_frame_size(frame);
 	data = capture_frame_data(frame);
 
-	sprintf(sizeString, "%llu\n", totalbytes);
-	syslog(LOG_INFO, "Total bytes: %s", sizeString);
-
 	char dataBuffer[totalbytes];
-	memcpy(dataBuffer, data, totalbytes);
+    memset(dataBuffer,0,sizeof dataBuffer);
+	memcpy(dataBuffer,data,totalbytes);
+	printf("File copied to buffer.\n");
+    puts(dataBuffer);
 
-    printf("Sending file size %s",sizeString );
+	char size [128];
+	sprintf(size, "%llu\n",totalbytes);
+    printf("Sending file size %s",size );
     char buff[128];
     memset(buff,0,128);
-	send(sock , sizeString , strlen(sizeString), 0);
+	send(sock , size , strlen(size), 0);
     read(sock,buff, 128);
     puts(buff);
 
 	// sending data
-	syslog(LOG_INFO,"Started sending\n");
+	printf("Started sending\n");
 	send(sock, dataBuffer, totalbytes, 0);
     memset(buff,0,128);
     read(sock,buff,128);
-
 	syslog(LOG_INFO,"File sent.\n");
 
 	capture_frame_free(frame);
