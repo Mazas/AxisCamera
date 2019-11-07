@@ -12,7 +12,7 @@
 #include <capture.h>
 
 #define PORT_NUMBER 1025
-#define SERVER_ADDRESS "192.168.20.252"
+#define SERVER_ADDRESS "127.0.0.1"
 #define MAX_THREADS 5
 
 void *connection_handler(void *);
@@ -38,20 +38,20 @@ void *send_image(int sock){
 	printf("File copied to buffer.\n");
     puts(dataBuffer);
 
-	char size [128];
+	char size [256];
 	sprintf(size, "%llu\n",totalbytes);
     printf("Sending file size %s",size );
-    char buff[128];
-    memset(buff,0,128);
+    char buff[256];
+    memset(buff,0,256);
 	send(sock , size , strlen(size), 0);
-    read(sock,buff, 128);
+    read(sock,buff, 256);
     puts(buff);
 
 	// sending data
 	printf("Started sending\n");
 	send(sock, dataBuffer, totalbytes, 0);
-    memset(buff,0,128);
-    read(sock,buff,128);
+    memset(buff,0,256);
+    read(sock,buff,256);
 
 	printf("File sent.\n");
    	fclose(fs);
@@ -62,10 +62,9 @@ void *take_image(int sock, char request[])
 	media_stream *stream;
 	void *data;
 	unsigned long long totalbytes = 0;
-	char sizeString[256];
 	//char resolution = "resolution=352x288&fps=10";
 	stream = capture_open_stream(IMAGE_JPEG, request);
-	int sent_bytes;
+    openlog("Axis_Server",LOG_PID,LOG_USER);
 
 	frame = capture_get_frame(stream);
 
@@ -75,29 +74,29 @@ void *take_image(int sock, char request[])
 	char dataBuffer[totalbytes];
     memset(dataBuffer,0,sizeof dataBuffer);
 	memcpy(dataBuffer,data,totalbytes);
-	printf("File copied to buffer.\n");
+	syslog(LOG_INFO,"File copied to buffer.\n");
     puts(dataBuffer);
 
-	char size [128];
+	char size [256];
 	sprintf(size, "%llu\n",totalbytes);
-    printf("Sending file size %s",size );
-    char buff[128];
-    memset(buff,0,128);
+    syslog(LOG_INFO,"Sending file size %s",size );
+    char buff[256];
+    memset(buff,0,256);
 	send(sock , size , strlen(size), 0);
-    read(sock,buff, 128);
-    puts(buff);
+    read(sock,buff, 256);
+    syslog(LOG_INFO,buff);
 
 	// sending data
-	printf("Started sending\n");
+	syslog(LOG_INFO,"Started sending\n");
 	send(sock, dataBuffer, totalbytes, 0);
-    memset(buff,0,128);
-    read(sock,buff,128);
-	syslog(LOG_INFO,"File sent.\n");
+    memset(buff,0,256);
+    read(sock,buff,256);
 
 	capture_frame_free(frame);
-	memset(&sizeString, 0, 256);
-	memset(&dataBuffer, 0, totalbytes);
+	memset(sizeString, 0, 256);
+	memset(dataBuffer, 0, totalbytes);
 	capture_close_stream(stream);
+    closelog();
 }
 
 int main(int argc, char **argv)
@@ -174,6 +173,7 @@ void *connection_handler(void *socket_desc)
 		{
 			puts(client_message);
 			take_image(sock, client_message);
+            //send_image(sock);
 		}
 		//clear the message buffer
 		memset(client_message, 0, 2000);
