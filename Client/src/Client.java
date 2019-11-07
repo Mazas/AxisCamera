@@ -35,10 +35,20 @@ public class Client {
             BufferedReader inFromServer = new BufferedReader( new InputStreamReader(socket.getInputStream()));
             int frames = 0;
             long prevTime = System.currentTimeMillis();
+
+
             while (true) {
                 // send message
                 outToServer.write(message);
                 outToServer.flush();
+                jFrame.setVisible(true);
+
+                byte xor_key = Byte.parseByte(inFromServer.readLine());
+                //send ack
+                System.out.println(xor_key);
+                outToServer.write("key received");
+                outToServer.flush();
+
                 int size = Integer.parseInt(inFromServer.readLine());
 
                 //send ack
@@ -52,6 +62,11 @@ public class Client {
                 outToServer.write("file received");
                 outToServer.flush();
 
+                //decrypt
+                for (int i = 0; i<data.length; i++){
+                    data[i]= (byte) (data[i]^ xor_key);
+                }
+
                 BufferedImage image = ImageIO.read(new ByteArrayInputStream(data));
                 System.out.println("Received " + image.getHeight() + "x" + image.getWidth() + ": " + System.currentTimeMillis());
 
@@ -60,7 +75,6 @@ public class Client {
                 jFrame.setLayout(new FlowLayout());
                 jFrame.setSize(image.getWidth(), image.getHeight());
                 jFrame.add(label);
-                jFrame.setVisible(true);
                 frames++;
                 // calculate frame rate
                 if (System.currentTimeMillis() - prevTime > 1000) {
