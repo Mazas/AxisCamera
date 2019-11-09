@@ -2,12 +2,14 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <syslog.h>
+#include <math.h>
 //Axis library
 #include <capture.h>
 
@@ -75,43 +77,34 @@ void *send_image(int sock, signed char xor_key)
 }
 void *take_image(int sock, char request[], signed char xor_key)
 {
-	media_frame *frame;
-	media_stream *stream;
+    media_frame *frame;
+    media_stream *stream;
     char buff[256];
-	void *data;
-	unsigned long long totalbytes = 0;
-	//char resolution = "resolution=352x288&fps=10";
-	stream = capture_open_stream(IMAGE_JPEG, request);
-    openlog("Axis_Server",LOG_PID,LOG_USER);
+    void *data;
+    unsigned long long totalbytes = 0;
+    //char resolution = "resolution=352x288&fps=10";
+    stream = capture_open_stream(IMAGE_JPEG, request);
+    openlog("Axis_Server", LOG_PID, LOG_USER);
 
-	frame = capture_get_frame(stream);
+    frame = capture_get_frame(stream);
 
-	totalbytes = capture_frame_size(frame);
-	data = capture_frame_data(frame);
+    totalbytes = capture_frame_size(frame);
+    data = capture_frame_data(frame);
 
-    // send key
-    char key[16];
-    sprintf(key, "%d\n", xor_key);
-    printf("Sending key %s", key);
-    memset(buff, 0, 256);
-    send(sock, key, strlen(key), 0);
-    read(sock, buff, 256);
-    puts(buff);
-
-	char dataBuffer[totalbytes];
-    memset(dataBuffer,0,sizeof dataBuffer);
-	memcpy(dataBuffer,data,totalbytes);
-	syslog(LOG_INFO,"File copied to buffer.\n");
+    char dataBuffer[totalbytes];
+    memset(dataBuffer, 0, sizeof dataBuffer);
+    memcpy(dataBuffer, data, totalbytes);
+    syslog(LOG_INFO, "File copied to buffer.\n");
     puts(dataBuffer);
 
-	char size [256];
-	sprintf(size, "%llu\n",totalbytes);
-    syslog(LOG_INFO,"Sending file size %s",size );
+    char size[256];
+    sprintf(size, "%llu\n", totalbytes);
+    syslog(LOG_INFO, "Sending file size %s", size);
 
-    memset(buff,0,256);
-	send(sock , size , strlen(size), 0);
-    read(sock,buff, 256);
-    syslog(LOG_INFO,buff);
+    memset(buff, 0, 256);
+    send(sock, size, strlen(size), 0);
+    read(sock, buff, 256);
+    syslog(LOG_INFO, buff);
 
     // encrypt using xor
     for (int i = 0; i < totalbytes; i++)
@@ -119,17 +112,40 @@ void *take_image(int sock, char request[], signed char xor_key)
         dataBuffer[i] = dataBuffer[i] ^ xor_key;
     }
 
-	// sending data
-	syslog(LOG_INFO,"Started sending\n");
-	send(sock, dataBuffer, totalbytes, 0);
-    memset(buff,0,256);
-    read(sock,buff,256);
+    // sending data
+    syslog(LOG_INFO, "Started sending\n");
+    send(sock, dataBuffer, totalbytes, 0);
+    memset(buff, 0, 256);
+    read(sock, buff, 256);
 
-	capture_frame_free(frame);
-	memset(size, 0, 256);
-	memset(dataBuffer, 0, totalbytes);
-	capture_close_stream(stream);
+    capture_frame_free(frame);
+    memset(size, 0, 256);
+    memset(dataBuffer, 0, totalbytes);
+    capture_close_stream(stream);
     closelog();
+}
+
+void exchange_keys(int sock, signed char xor_key, char message[])
+{
+    char buff[256];
+    const char delimiters[] = ":";
+    char * running = strdupa(message);
+    char * token;
+    char pmod[] = strsep(&running, delimiters);
+    char pex[] = strsep(&running,delimiters);
+
+
+    double e = pow((double)xor_key,atof(pex));
+    double encrypted_xor = fmod(e,pmod);
+
+    // send xor key
+    char key[256];
+    sprintf(key, "%f\n", encrypted_xor);
+    printf("Sending key %s", key);
+    memset(buff, 0, 256);
+    send(sock, key, strlen(key), 0);
+    read(sock, buff, 256);
+    puts(buff);
 }
 
 int main(int argc, char **argv)
@@ -200,7 +216,6 @@ void *connection_handler(void *socket_desc)
     char *message, client_message[2000];
     signed char xor_key = rand() % 256;
 
-
     //Receive a message from client
     while ((read_size = recv(sock, client_message, 2000, 0)) > 0)
     {
@@ -210,6 +225,11 @@ void *connection_handler(void *socket_desc)
             take_image(sock, client_message, xor_key);
             //send_image(sock, xor_key);
         }
+        else
+        {
+            exchange_keys(sock, xor_key);
+        }
+
         //clear the message buffer
         memset(client_message, 0, 2000);
     }
