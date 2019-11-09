@@ -3,7 +3,7 @@ include $(AXIS_TOP_DIR)/tools/build/rules/common.mak
 
 
 PROGS	= axis_server
-CFLAGS += -Wall -g -O2 -pthread
+CFLAGS += -Wall -g -O2 -pthread -std=c99 -lm
 ifeq ($(AXIS_BUILDTYPE),host)
 LDFLAGS += -lcapturehost -ljpeg
 else
