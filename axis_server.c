@@ -128,24 +128,16 @@ void *take_image(int sock, char request[], signed char xor_key)
 void exchange_keys(int sock, signed char xor_key, char message[])
 {
     char buff[256];
-    const char delimiters[] = ":";
-    char *token;
     char pex[256];
     char pmod[256];
     memset(pex,0,256);
     memset(pmod,0,256);
 
-    /* get the first token */
-    token = strtok(message, delimiters);
+    sprintf(pex, "%s",message);
+    sprintf(buff, "key received");
 
-    /* walk through other tokens */
-    while (token != NULL)
-    {
-        sprintf(pex,"%f",token);
-        token = strtok(NULL, message);
-        sprintf(pex,"%f",token);
-        token = strtok(NULL, message);
-    }
+    send(sock,buff,strlen(buff),0);
+    read(sock, pmod, 256);
 
     double e = pow((double)xor_key, atof(pex));
     double encrypted_xor = fmod(e, atof(pmod));
