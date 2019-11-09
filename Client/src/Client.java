@@ -4,10 +4,12 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.math.BigInteger;
 import java.net.*;;
 import java.util.Scanner;
 
 public class Client {
+
     public static void main(String[] args) throws Exception {
         // get input
         Scanner in = new Scanner(System.in);
@@ -21,7 +23,7 @@ public class Client {
         String fps = in.nextLine();
         try {
             // build the string
-            String message = "resolution="+resolution+"&fps="+fps;
+            String message = "resolution=1280x960&fps=10";
             // building java swing window
             JPanel jPanel = new JPanel();
             jPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
@@ -30,11 +32,25 @@ public class Client {
             JLabel label = new JLabel();
             jFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             ImageIcon icon;
-            Socket socket = new Socket("127.0.0.1", 1025);
+            Socket socket = new Socket("192.168.20.252", 1025);
             PrintWriter outToServer = new PrintWriter(socket.getOutputStream());
             BufferedReader inFromServer = new BufferedReader( new InputStreamReader(socket.getInputStream()));
             int frames = 0;
             long prevTime = System.currentTimeMillis();
+
+            RSA rsa = new RSA();
+            outToServer.write(rsa.getEx());
+            outToServer.flush();
+            System.out.println(inFromServer.readLine());
+            outToServer.write(rsa.getPQ());
+            outToServer.flush();
+            System.out.println(inFromServer.readLine());
+            byte xor_key = 101;//Byte.parseByte(rsa.decryptMessage(inFromServer.readLine().getBytes()));
+            //send ack
+            System.out.println(xor_key);
+            outToServer.write("key received");
+            outToServer.flush();
+
 
 
             while (true) {
@@ -42,12 +58,6 @@ public class Client {
                 outToServer.write(message);
                 outToServer.flush();
                 jFrame.setVisible(true);
-
-                byte xor_key = Byte.parseByte(inFromServer.readLine());
-                //send ack
-                System.out.println(xor_key);
-                outToServer.write("key received");
-                outToServer.flush();
 
                 int size = Integer.parseInt(inFromServer.readLine());
 
