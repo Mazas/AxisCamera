@@ -129,13 +129,26 @@ void exchange_keys(int sock, signed char xor_key, char message[])
 {
     char buff[256];
     const char delimiters[] = ":";
-    char * running = strdupa(message);
-    char pmod[] = strsep(&running, delimiters);
-    char pex[] = strsep(&running,delimiters);
+    char *token;
+    char pex[256];
+    char pmod[256];
+    memset(pex,0,256);
+    memset(pmod,0,256);
 
+    /* get the first token */
+    token = strtok(message, delimiters);
 
-    double e = pow((double)xor_key,atof(pex));
-    double encrypted_xor = fmod(e,atof(pmod));
+    /* walk through other tokens */
+    while (token != NULL)
+    {
+        sprintf(pex,"%f",token);
+        token = strtok(NULL, message);
+        sprintf(pex,"%f",token);
+        token = strtok(NULL, message);
+    }
+
+    double e = pow((double)xor_key, atof(pex));
+    double encrypted_xor = fmod(e, atof(pmod));
 
     // send xor key
     char key[256];
@@ -226,7 +239,7 @@ void *connection_handler(void *socket_desc)
         }
         else
         {
-            exchange_keys(sock, xor_key,client_message);
+            exchange_keys(sock, xor_key, client_message);
         }
 
         //clear the message buffer
