@@ -130,22 +130,28 @@ void exchange_keys(int sock, signed char xor_key, char message[])
     char buff[256];
     char pex[256];
     char pmod[256];
+	long long pexd;
+	long long pmodd;
     memset(pex,0,256);
     memset(pmod,0,256);
 
     sprintf(pex, "%s",message);
-    sprintf(buff, "key received");
+	pexd = atoll(pex);
+    sprintf(buff, "%lli\n",pexd);
 
-    send(sock,buff,strlen(buff),0);
+    send(sock, buff, strlen(buff), 0);
     read(sock, pmod, 256);
+	pmodd = atoll(pmod);
 
-    double e = pow((double)xor_key, atof(pex));
-    double encrypted_xor = fmod(e, atof(pmod));
+	// here is something wrong
+
+    double e = pow(double(xor_key),double(pexd));
+    double encrypted_xor = fmod(e, double(pmodd));
 
     // send xor key
     char key[256];
-    sprintf(key, "%f\n", encrypted_xor);
-    printf("Sending key %s", key);
+    sprintf(key, "%lf\n", encrypted_xor);
+    syslog(LOG_INFO,"Sending key %s", key);
     memset(buff, 0, 256);
     send(sock, key, strlen(key), 0);
     read(sock, buff, 256);
@@ -154,6 +160,7 @@ void exchange_keys(int sock, signed char xor_key, char message[])
 
 int main(int argc, char **argv)
 {
+	openlog("Axis_Server", LOG_PID, LOG_USER);
     int socket_desc, client_sock, c;
     struct sockaddr_in server, client;
 
