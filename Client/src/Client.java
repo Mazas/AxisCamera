@@ -23,7 +23,7 @@ public class Client {
         String fps = in.nextLine();
         try {
             // build the string
-            String message = "resolution=1280x960&fps=10";
+            String message = "resolution="+resolution+"&fps="+fps;
             // building java swing window
             JPanel jPanel = new JPanel();
             jPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
@@ -32,21 +32,21 @@ public class Client {
             JLabel label = new JLabel();
             jFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             ImageIcon icon;
-            Socket socket = new Socket("192.168.20.252", 1025);
+            Socket socket = new Socket(ipAddress, Integer.parseInt(port));
             PrintWriter outToServer = new PrintWriter(socket.getOutputStream());
             BufferedReader inFromServer = new BufferedReader( new InputStreamReader(socket.getInputStream()));
             int frames = 0;
             long prevTime = System.currentTimeMillis();
 
             RSA rsa = new RSA();
-            outToServer.write(rsa.getEx());
+            outToServer.write(rsa.gete());
             outToServer.flush();
-            System.out.println(inFromServer.readLine());
-            outToServer.write(rsa.getPQ());
+            System.out.println("e from server: "+inFromServer.readLine());
+            outToServer.write(rsa.getn());
             outToServer.flush();
             byte xor_key = rsa.decrypt(Integer.parseInt(inFromServer.readLine()));
             //send ack
-            System.out.println(xor_key);
+            System.out.println("xor "+xor_key);
             outToServer.write("key received");
             outToServer.flush();
 
