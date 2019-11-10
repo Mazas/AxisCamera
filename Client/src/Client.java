@@ -44,8 +44,7 @@ public class Client {
             System.out.println(inFromServer.readLine());
             outToServer.write(rsa.getPQ());
             outToServer.flush();
-            System.out.println(inFromServer.readLine());
-            byte xor_key = 101;//Byte.parseByte(rsa.decryptMessage(inFromServer.readLine().getBytes()));
+            byte xor_key = rsa.decrypt(Integer.parseInt(inFromServer.readLine()));
             //send ack
             System.out.println(xor_key);
             outToServer.write("key received");
