@@ -1,89 +1,92 @@
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.math.BigInteger;
 import java.util.Random;
 
 public class RSA
 {
-    private BigInteger P;
-    private BigInteger Q;
-    private BigInteger N;
-    private BigInteger PHI;
-    private BigInteger e;
-    private BigInteger d;
-    private int maxLength = 32;
-    private Random R;
+
+    private int e;
+    private int n;
+    private int d;
+
 
     public RSA()
     {
-        R = new Random();
-        P = BigInteger.probablePrime(maxLength, R);
-        Q = BigInteger.probablePrime(maxLength, R);
-        N = P.multiply(Q);
-        PHI = P.subtract(BigInteger.ONE).multiply(  Q.subtract(BigInteger.ONE));
-        e = BigInteger.probablePrime(maxLength / 2, R);
-        while (PHI.gcd(e).compareTo(BigInteger.ONE) > 0 && e.compareTo(PHI) < 0)
-        {
-            e.add(BigInteger.ONE);
+        int p = 19;
+        int q = 17;
+
+        n = p * q;
+
+        int phin = (p - 1) * (q - 1);
+
+        int e = 0;
+        for (e = 5; e <= 100000; e++) {
+            if (findGCD(phin, e) == 1)
+                break;
         }
-        d = e.modInverse(PHI);
 
-        System.out.println("PQ "+N);
-        System.out.println("d "+d);
-    }
-
-    public RSA(BigInteger e, BigInteger d, BigInteger N)
-    {
-        this.e = e;
-        this.d = d;
-        this.N = N;
-    }
-
-//    public static void main (String [] arguments) throws IOException
-//    {
-//        RSA rsa = new RSA();
-//        DataInputStream input = new DataInputStream(System.in);
-//        String inputString;
-//        System.out.println("Enter message you wish to send.");
-//        inputString = input.readLine();
-//        System.out.println("Encrypting the message: " + inputString);
-//        System.out.println("The message in bytes is:: "
-//                + bToS(inputString.getBytes()));
-//        // encryption
-//        byte[] cipher = rsa.encryptMessage(inputString.getBytes());
-//        // decryption
-//        byte[] plain = rsa.decryptMessage(cipher);
-//        System.out.println("Decrypting Bytes: " + bToS(plain));
-//        System.out.println("Plain message is: " + new String(plain));
-//    }
-
-    private static String bToS(byte[] cipher)
-    {
-        String temp = "";
-        for (byte b : cipher)
-        {
-            temp += Byte.toString(b);
+        int d = 0;
+        for (d = e + 1; d <= 100000; d++) {
+            if ( ((d * e) % phin) == 1)
+                break;
         }
-        return temp;
     }
 
-    // Encrypting the message
-    public byte[] encryptMessage(byte[] message)
-    {
-        return (new BigInteger(message)).modPow(e, N).toByteArray();
+    private int checkPrime(int n) {
+        int i;
+        int m = n / 2;
+
+        for (i = 2; i <= m; i++) {
+            if (n % i == 0) {
+                return 0; // Not Prime
+            }
+        }
+
+        return 1; // Prime
     }
 
-    // Decrypting the message
-    public String decryptMessage(byte[] message)
-    {
-        return bToS ((new BigInteger(message)).modPow(d, N).toByteArray());
+    private int findGCD(int n1, int n2) {
+        int i, gcd =1;
+
+        for(i = 1; i <= n1 && i <= n2; ++i) {
+            if(n1 % i == 0 && n2 % i == 0)
+                gcd = i;
+        }
+
+        return gcd;
+    }
+
+    public int powMod(int a, int b, int n) {
+        long x = 1, y = a;
+
+        while (b > 0) {
+            if (b % 2 == 1)
+                x = (x * y) % n;
+            y = (y * y) % n; // Squaring the base
+            b /= 2;
+        }
+
+        return (int) x % n;
+    }
+    public byte decrypt(int data){
+        return (byte)powMod(data,d,n);
     }
 
     public String getPQ(){
-        return String.valueOf(N);
+        return String.valueOf(n);
     }
 
     public String getEx(){
         return String.valueOf(d);
+    }
+
+    private int getRandomPrime(){
+        int[] primes ={127,131,137,139,149,151,157,163,
+                167,173,179,181,191,193,197,199,211,223,
+                227,229,233,239,241,251,257,263,269,271,
+                277,281,283,293,307,311,313,317,331,337,
+                347,349,353,359,367,373,379,383,389,397,
+                401,409,419,421,431,433,439,443,449,457,
+                461,463};
+        Random rng = new Random();
+        return primes[rng.nextInt(primes.length-1)];
     }
 }
