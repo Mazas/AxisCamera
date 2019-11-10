@@ -10,15 +10,29 @@
 #include <pthread.h>
 #include <syslog.h>
 #include <math.h>
+#include <time.h>
 //Axis library
 #include <capture.h>
 
 #define PORT_NUMBER 1025
-#define SERVER_ADDRESS "127.0.0.1"
+#define SERVER_ADDRESS "192.168.20.252"
 #define MAX_THREADS 5
 
 void *connection_handler(void *);
 
+int powMod(int a, int b, int n) {
+        long x = 1, y = a;
+
+        while (b > 0) {
+            if (b % 2 == 1)
+                x = (x * y) % n;
+            y = (y * y) % n; // Squaring the base
+            b /= 2;
+        }
+
+        return x % n;
+}
+// for testing and dev purposes only
 void *send_image(int sock, signed char xor_key)
 {
     char buff[256];
@@ -75,6 +89,7 @@ void *send_image(int sock, signed char xor_key)
 
     fclose(fs);
 }
+
 void *take_image(int sock, char request[], signed char xor_key)
 {
     media_frame *frame;
@@ -84,7 +99,7 @@ void *take_image(int sock, char request[], signed char xor_key)
     unsigned long long totalbytes = 0;
     //char resolution = "resolution=352x288&fps=10";
     stream = capture_open_stream(IMAGE_JPEG, request);
-    openlog("Axis_Server", LOG_PID, LOG_USER);
+    //openlog("Axis_Server", LOG_PID, LOG_USER);
 
     frame = capture_get_frame(stream);
 
@@ -113,7 +128,7 @@ void *take_image(int sock, char request[], signed char xor_key)
     }
 
     // sending data
-    syslog(LOG_INFO, "Started sending\n");
+    //syslog(LOG_INFO, "Started sending\n");
     send(sock, dataBuffer, totalbytes, 0);
     memset(buff, 0, 256);
     read(sock, buff, 256);
@@ -122,55 +137,55 @@ void *take_image(int sock, char request[], signed char xor_key)
     memset(size, 0, 256);
     memset(dataBuffer, 0, totalbytes);
     capture_close_stream(stream);
-    closelog();
 }
 
 void exchange_keys(int sock, signed char xor_key, char message[])
 {
+	openlog("axis_server", LOG_PID|LOG_CONS, LOG_USER);
     char buff[256];
     char pex[256];
     char pmod[256];
-	long long pexd;
-	long long pmodd;
+	int pexd;
+	int pmodd;
     memset(pex,0,256);
     memset(pmod,0,256);
-
+	syslog(LOG_INFO,"key %d", xor_key);
+    //message is e
     sprintf(pex, "%s",message);
 	pexd = atoll(pex);
-    sprintf(buff, "%lli\n",pexd);
-
-    send(sock, buff, strlen(buff), 0);
+    sprintf(buff, "%d\n",pexd);
+    //send ack
+	send(sock, buff, strlen(buff), 0);
+    // read n (p*q)
     read(sock, pmod, 256);
 	pmodd = atoll(pmod);
-
-	// here is something wrong
-
-    double e = pow(double(xor_key),double(pexd));
-    double encrypted_xor = fmod(e, double(pmodd));
-
+	syslog(LOG_INFO,"pmod %s", pmod);
+    // this doesnt work due to super giga large numbers in e
+    //double e = pow((double)xor_key,(double)pexd);
+    //double encrypted_xor = fmod(e, (double)pmodd);
+    int encrypted_xor = powMod(xor_key, pexd, pmodd);
     // send xor key
     char key[256];
-    sprintf(key, "%lf\n", encrypted_xor);
+    sprintf(key, "%d\n", encrypted_xor);
     syslog(LOG_INFO,"Sending key %s", key);
     memset(buff, 0, 256);
     send(sock, key, strlen(key), 0);
     read(sock, buff, 256);
     puts(buff);
+	closelog();
 }
 
 int main(int argc, char **argv)
 {
-	openlog("Axis_Server", LOG_PID, LOG_USER);
     int socket_desc, client_sock, c;
     struct sockaddr_in server, client;
-
     //Create socket
     socket_desc = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_desc == -1)
     {
         printf("Could not create socket");
     }
-    puts("Socket created");
+    syslog(LOG_INFO,"Socket created");
 
     //Prepare the sockaddr_in structure
     server.sin_family = AF_INET;
@@ -184,19 +199,19 @@ int main(int argc, char **argv)
         perror("bind failed. Error");
         return 1;
     }
-    puts("bind done");
+    syslog(LOG_INFO,"bind done");
 
     //Listen
     listen(socket_desc, 3);
 
     //Accept and incoming connection
-    puts("Waiting for incoming connections...");
+    syslog(LOG_INFO,"Waiting for incoming connections...");
     c = sizeof(struct sockaddr_in);
     pthread_t thread_id;
 
     while ((client_sock = accept(socket_desc, (struct sockaddr *)&client, (socklen_t *)&c)))
     {
-        puts("Connection accepted");
+        syslog(LOG_INFO,"Connection accepted");
 
         if (pthread_create(&thread_id, NULL, connection_handler, (void *)&client_sock) < 0)
         {
@@ -206,7 +221,7 @@ int main(int argc, char **argv)
 
         //Now join the thread , so that we dont terminate before the thread
         //pthread_join(thread_id, NULL);
-        puts("Handler assigned");
+        syslog(LOG_INFO,"Handler assigned");
     }
 
     if (client_sock < 0)
@@ -215,16 +230,20 @@ int main(int argc, char **argv)
         return 1;
     }
     close(client_sock);
+    closelog();
 
     return 0;
 }
 
 void *connection_handler(void *socket_desc)
 {
+    // init for random
+	time_t t;
+	srand((unsigned) time(&t));
     //Get the socket descriptor
     int sock = *(int *)socket_desc;
     int read_size;
-    char *message, client_message[2000];
+    char client_message[2000];
     signed char xor_key = rand() % 256;
 
     //Receive a message from client
@@ -232,12 +251,13 @@ void *connection_handler(void *socket_desc)
     {
         if (strstr(client_message, "resolution="))
         {
-            puts(client_message);
+	    syslog(LOG_INFO, client_message);
             take_image(sock, client_message, xor_key);
             //send_image(sock, xor_key);
         }
         else
         {
+            // if its not request, its probably e of the RSA key
             exchange_keys(sock, xor_key, client_message);
         }
 
