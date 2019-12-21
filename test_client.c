@@ -14,17 +14,17 @@
 
 void handleConnection(int socket)
 {
-	char string[16];
+	char string[13];
 	time_t seconds;
 
 	while (1)
 	{
-		seconds = time(NULL);
+		seconds = time(NULL)*1000;
 		memset(string, 0, sizeof(string));
 		sprintf(string, "%ld\n", seconds);
-
-		send(socket, string, 16, 0);
-		recv(socket, string, 16, 0);
+		printf("%s",string);
+		send(socket, string, 13, 0);
+		recv(socket, string, 13, 0);
 		sleep(rand() % 10);
 	}
 }
